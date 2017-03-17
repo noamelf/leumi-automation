@@ -1,12 +1,19 @@
 # -*- coding: utf-8 -*-
 import configparser
+import datetime
 import logging
 import os
+import pathlib
 import re
+import shutil
+from collections import namedtuple
 from time import sleep
 
+import click as click
 from selenium import webdriver
 from selenium.webdriver.support.select import Select
+
+DOWNLOADS_PATH = '/Users/noam/Downloads'
 
 logging.basicConfig(level=logging.INFO)
 
@@ -16,16 +23,32 @@ FIRST_ACCOUNT_SELECTOR = '#ctlActivityTable > tbody > tr.item > td:nth-child(1) 
 account_num_regex = re.compile('\d{3}-\d{6}/\d{2}')
 credit_card_regex = re.compile('.* \d{4}')
 
+Creds = namedtuple('Creds', 'id pswd')
+
+
 d = None
+
+
+def _move_report_to_output_path(output_path, filename):
+    downloads_path = pathlib.Path(output_path)
+    newest = max(downloads_path.glob('*.html'), key=os.path.getctime)
+    report_path = downloads_path / 'leumi-automation' / str(datetime.date.today())
+    report_path.mkdir(parents=True, exist_ok=True)
+    shutil.copy(str(newest), str(report_path / filename))
 
 
 def _save_report():
     d.find_element_by_css_selector("#btnDisplay").click()
     d.find_element_by_css_selector("#BTNSAVE").click()
+
+    # Wait for new window to open
     sleep(0.5)
     d.switch_to_window(d.window_handles[1])
     d.find_element_by_css_selector("#ImgContinue").click()
     d.switch_to_window(d.window_handles[0])
+
+    # Wait for download to finish
+    sleep(1.5)
 
 
 def _go_to_bank_account_view():
@@ -50,21 +73,25 @@ def _traverse_all_dropdown_options(css_dropdown_selector, regex):
         account_name = account.text
         if regex.match(account_name):
             logging.info("Processing account %s", account_name)
-            yield account
+            account.click()
+            yield account_name
 
         i += 1
 
 
-def _save_accounts(selector, regex):
-    for account in _traverse_all_dropdown_options(selector, regex):
-        account.click()
+def _save_accounts(output_path, selector, regex):
+    for account_name in _traverse_all_dropdown_options(selector, regex):
         _save_report()
+        _move_report_to_output_path(output_path, _create_filename(account_name))
 
 
-def _save_credit_cards():
-    for account in _traverse_all_dropdown_options(ACCOUNTS_CSS_SELECTOR, account_num_regex):
-        account.click()
-        _save_accounts(CARDS_SELECTOR, credit_card_regex)
+def _create_filename(account_name):
+    return ''.join(i for i in account_name if i.isdigit()) + '.html'
+
+
+def _save_credit_cards(output_path):
+    for _ in _traverse_all_dropdown_options(ACCOUNTS_CSS_SELECTOR, account_num_regex):
+        _save_accounts(output_path, CARDS_SELECTOR, credit_card_regex)
 
 
 def login(id_, pswd):
@@ -76,24 +103,20 @@ def login(id_, pswd):
     d.find_element_by_id("enter").click()
 
 
-def _retrieve_info(account_id, account_pswd):
-    login(account_id, account_pswd)
+def _retrieve_info(output_path, creds):
+    login(*creds)
     logging.info('Fetching checking account')
     _go_to_bank_account_view()
-    _save_accounts(ACCOUNTS_CSS_SELECTOR, account_num_regex)
+    _save_accounts(output_path, ACCOUNTS_CSS_SELECTOR, account_num_regex)
 
     logging.info('Fetching credit account')
     _go_to_credit_account_view()
-    _save_credit_cards()
+    _save_credit_cards(output_path)
 
 
-def get_creds(conf):
-    return conf['id'], conf['pswd']
-
-
-def _get_conf():
+def _get_conf(conf_path):
     config = configparser.ConfigParser()
-    config.read(os.environ['LEUMI_CONFIG'])
+    config.read(conf_path)
     return config
 
 
@@ -104,17 +127,24 @@ def _create_driver():
     d.get("http://www.leumi.co.il/")
 
 
-def main():
-    conf = _get_conf()
-
+def get_creds(conf_path):
+    conf = _get_conf(conf_path)
     for section, values in conf.items():
-        if not values:
+        if section == 'DEFAULT':
             continue
-        logging.info('Fetching info for %s bank accounts', section.title())
+        yield section, Creds(values['id'], values['pswd'])
+
+@click.command()
+@click.option('--conf_path', help='Path of config file')
+@click.option('--output_path', help='Path of script output')
+def fetch_accounts_data(conf_path, output_path):
+    """A program to download Leumi bank accounts data"""
+    for account, creds in get_creds(conf_path):
+        logging.info('Fetching info for %s bank accounts', account.title())
         _create_driver()
-        _retrieve_info(*get_creds(values))
+        _retrieve_info(output_path, creds)
         d.quit()
 
 
 if __name__ == "__main__":
-    main()
+    fetch_accounts_data()
