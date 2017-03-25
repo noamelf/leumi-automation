@@ -10,10 +10,9 @@ from collections import namedtuple
 from time import sleep
 
 import click as click
+from os.path import expanduser
 from selenium import webdriver
 from selenium.webdriver.support.select import Select
-
-DOWNLOADS_PATH = '/Users/noam/Downloads'
 
 logging.basicConfig(level=logging.INFO)
 
@@ -25,14 +24,12 @@ credit_card_regex = re.compile('.* \d{4}')
 
 Creds = namedtuple('Creds', 'id pswd')
 
-
 d = None
 
 
 def _move_report_to_output_path(output_path, filename):
-    downloads_path = pathlib.Path(output_path)
-    newest = max(downloads_path.glob('*.html'), key=os.path.getctime)
-    report_path = downloads_path / 'leumi-automation' / str(datetime.date.today())
+    newest = max(output_path.glob('*.html'), key=os.path.getctime)
+    report_path = output_path / 'leumi-automation' / str(datetime.date.today())
     report_path.mkdir(parents=True, exist_ok=True)
     shutil.copy(str(newest), str(report_path / filename))
 
@@ -134,15 +131,16 @@ def get_creds(conf_path):
             continue
         yield section, Creds(values['id'], values['pswd'])
 
+
 @click.command()
 @click.option('--conf_path', help='Path of config file')
-@click.option('--output_path', help='Path of script output')
-def fetch_accounts_data(conf_path, output_path):
+def fetch_accounts_data(conf_path):
+    downloads_path = pathlib.Path(expanduser("~")) / 'Downloads'
     """A program to download Leumi bank accounts data"""
     for account, creds in get_creds(conf_path):
         logging.info('Fetching info for %s bank accounts', account.title())
         _create_driver()
-        _retrieve_info(output_path, creds)
+        _retrieve_info(downloads_path, creds)
         d.quit()
 
 
