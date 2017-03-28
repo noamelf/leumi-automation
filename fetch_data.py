@@ -1,16 +1,15 @@
 # -*- coding: utf-8 -*-
 import configparser
-import datetime
 import logging
 import os
 import pathlib
 import re
 import shutil
 from collections import namedtuple
+from os.path import expanduser
 from time import sleep
 
 import click as click
-from os.path import expanduser
 from selenium import webdriver
 from selenium.webdriver.support.select import Select
 
@@ -25,13 +24,19 @@ credit_card_regex = re.compile('.* \d{4}')
 Creds = namedtuple('Creds', 'id pswd')
 
 d = None
+processed_accounts = set()
 
 
-def _move_report_to_output_path(output_path, filename):
-    newest = max(output_path.glob('*.html'), key=os.path.getctime)
-    report_path = output_path / 'leumi-automation' / str(datetime.date.today())
-    report_path.mkdir(parents=True, exist_ok=True)
-    shutil.copy(str(newest), str(report_path / filename))
+def _move_report_to_output_path(output_path, account_name):
+    downloads_path = pathlib.Path(expanduser("~")) / 'Downloads'
+    newest = max(downloads_path.glob('*.html'), key=os.path.getctime)
+    output_path.mkdir(parents=True, exist_ok=True)
+    filename = account_name + '.html'
+    shutil.copy(str(newest), str(output_path / filename))
+
+
+def is_new_window_open():
+    return len(d.window_handles) > 1
 
 
 def _save_report():
@@ -40,12 +45,18 @@ def _save_report():
 
     # Wait for new window to open
     sleep(0.5)
+
+    # Sometimes there are no transactions so on pressing save nothing happens.
+    if not is_new_window_open():
+        return False
+
     d.switch_to_window(d.window_handles[1])
     d.find_element_by_css_selector("#ImgContinue").click()
     d.switch_to_window(d.window_handles[0])
 
     # Wait for download to finish
     sleep(1.5)
+    return True
 
 
 def _go_to_bank_account_view():
@@ -69,21 +80,29 @@ def _traverse_all_dropdown_options(css_dropdown_selector, regex):
 
         account_name = account.text
         if regex.match(account_name):
-            logging.info("Processing account %s", account_name)
             account.click()
-            yield account_name
+            yield _extract_account_num(account_name)
 
         i += 1
 
 
+def is_account_processed(account_name):
+    is_processed = account_name in processed_accounts
+    processed_accounts.add(account_name)
+    return is_processed
+
+
 def _save_accounts(output_path, selector, regex):
-    for account_name in _traverse_all_dropdown_options(selector, regex):
-        _save_report()
-        _move_report_to_output_path(output_path, _create_filename(account_name))
+    for account_num in _traverse_all_dropdown_options(selector, regex):
+        if not is_account_processed(account_num):
+            logging.info("Processing account %s", account_num)
+            success = _save_report()
+            if success:
+                _move_report_to_output_path(output_path, account_num)
 
 
-def _create_filename(account_name):
-    return ''.join(i for i in account_name if i.isdigit()) + '.html'
+def _extract_account_num(account_name):
+    return ''.join(i for i in account_name if i.isdigit())
 
 
 def _save_credit_cards(output_path):
@@ -133,14 +152,15 @@ def get_creds(conf_path):
 
 
 @click.command()
-@click.option('--conf_path', help='Path of config file')
-def fetch_accounts_data(conf_path):
-    downloads_path = pathlib.Path(expanduser("~")) / 'Downloads'
+@click.argument('conf_path')
+@click.argument('output_path')
+def fetch_accounts_data(conf_path, output_path):
     """A program to download Leumi bank accounts data"""
+    output_path = pathlib.Path(output_path)
     for account, creds in get_creds(conf_path):
         logging.info('Fetching info for %s bank accounts', account.title())
         _create_driver()
-        _retrieve_info(downloads_path, creds)
+        _retrieve_info(output_path, creds)
         d.quit()
 
 
