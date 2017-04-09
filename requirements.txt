@@ -1,3 +1,4 @@
+bs4
 appdirs==1.4.3
 click==6.7
 packaging==16.8

@@ -69,7 +69,7 @@ def _go_to_credit_account_view():
 
 
 def _traverse_all_dropdown_options(css_dropdown_selector, regex):
-    # this weird pattern is used since switching windows cause to loose the select dropdown, hence
+    # this weird pattern is used since switching windows cause to lose the select dropdown, hence
     # I'm re-selecting it all the time and keeping an index
     i = 0
     while True:
@@ -111,10 +111,9 @@ def _save_credit_cards(output_path):
 
 
 def login(id_, pswd):
+
     d.find_element_by_css_selector(u"a[title=\"כניסה לחשבונך\"]").click()
-    d.find_element_by_css_selector(u"#wtr_uid > strong:nth-child(1)").click()
     d.find_element_by_id("uid").send_keys(id_)
-    d.find_element_by_css_selector("#wtr_password > strong").click()
     d.find_element_by_id("password").send_keys(pswd)
     d.find_element_by_id("enter").click()
 
