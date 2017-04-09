@@ -6,6 +6,9 @@ import pathlib
 import re
 import shutil
 from collections import namedtuple
+from functools import partial
+from multiprocessing import Manager
+from multiprocessing import Pool
 from os.path import expanduser
 from time import sleep
 
@@ -24,7 +27,7 @@ credit_card_regex = re.compile('.* \d{4}')
 Creds = namedtuple('Creds', 'id pswd')
 
 d = None
-processed_accounts = set()
+processed_accounts = Manager().dict()
 
 
 def _move_report_to_output_path(output_path, account_name):
@@ -88,7 +91,7 @@ def _traverse_all_dropdown_options(css_dropdown_selector, regex):
 
 def is_account_processed(account_name):
     is_processed = account_name in processed_accounts
-    processed_accounts.add(account_name)
+    processed_accounts[account_name] = True
     return is_processed
 
 
@@ -111,7 +114,6 @@ def _save_credit_cards(output_path):
 
 
 def login(id_, pswd):
-
     d.find_element_by_css_selector(u"a[title=\"כניסה לחשבונך\"]").click()
     d.find_element_by_id("uid").send_keys(id_)
     d.find_element_by_id("password").send_keys(pswd)
@@ -150,17 +152,22 @@ def get_creds(conf_path):
         yield section, Creds(values['id'], values['pswd'])
 
 
+def run_selenium(account, creds, output_path):
+    logging.info('Fetching info for %s bank accounts', account.title())
+    _create_driver()
+    _retrieve_info(output_path, creds)
+    d.quit()
+
+
 @click.command()
-@click.argument('conf_path')
-@click.argument('output_path')
+@click.argument('conf_path', type=click.Path(exists=True))
+@click.argument('output_path', type=click.Path())
 def fetch_accounts_data(conf_path, output_path):
     """A program to download Leumi bank accounts data"""
     output_path = pathlib.Path(output_path)
-    for account, creds in get_creds(conf_path):
-        logging.info('Fetching info for %s bank accounts', account.title())
-        _create_driver()
-        _retrieve_info(output_path, creds)
-        d.quit()
+    run_sel = partial(run_selenium, output_path=output_path)
+    creds = list(get_creds(conf_path))
+    Pool().starmap(run_sel, creds)
 
 
 if __name__ == "__main__":
