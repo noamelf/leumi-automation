@@ -30,9 +30,8 @@ processed_accounts = set()
 def _move_report_to_output_path(output_path, account_name):
     downloads_path = pathlib.Path(expanduser("~")) / 'Downloads'
     newest = max(downloads_path.glob('*.html'), key=os.path.getctime)
-    output_path.mkdir(parents=True, exist_ok=True)
-    filename = account_name + '.html'
-    shutil.copy(str(newest), str(output_path / filename))
+    filename = output_path / (account_name + '.html')
+    shutil.copy(newest, filename)
 
 
 def is_new_window_open():
@@ -145,7 +144,7 @@ def _create_driver():
 def get_creds(conf_path):
     conf = _get_conf(conf_path)
     for section, values in conf.items():
-        if section == 'DEFAULT':
+        if section in ['DEFAULT', 'ynab']:
             continue
         yield section, Creds(values['id'], values['pswd'])
 

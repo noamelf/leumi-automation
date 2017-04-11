@@ -18,9 +18,14 @@ def not_total_row(elem):
     return not element_has_class(elem, 'footer')
 
 
+def not_inner_div(elem):
+    # Some columns has hidden inner div, this removes them
+    return not elem.div
+
+
 def extract_column(tds):
     for elem in tds:
-        if not_hidden_column(elem):
+        if not_hidden_column(elem) and not_inner_div(elem):
             yield elem.text.strip()
 
 
@@ -36,7 +41,8 @@ def extract_content(html):
     table = _find_table(html)
     rows = table.find_all('tr')
 
-    header = [t.text.strip() for t in rows[0].find_all('span')]
+    header = [c for c in rows[0].find_all(text=True, recursive=True) if c.strip()]
+
     yield header
 
     for tr in filter(not_total_row, rows[1:]):
@@ -51,12 +57,13 @@ def write_to_csv(rows, csv_path):
 
 
 @click.command()
-@click.argument('html_path')
-def parse(html_path):
-    html_path = Path(html_path)
+@click.argument('input_path')
+@click.argument('output_path')
+def extract_csv(input_path, output_path):
+    html_path = Path(input_path)
     rows = list(extract_content(html_path))
-    write_to_csv(rows, html_path.with_suffix('.csv'))
+    write_to_csv(rows, output_path)
 
 
 if __name__ == "__main__":
-    parse()
+    extract_csv()
