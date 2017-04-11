@@ -2,6 +2,6 @@
 cd $1
 files_to_merge="6841.csv 6940.csv"
 for file in ${files_to_merge}; do
-    tail --lines=+2 ${file} >> 83240883626.csv
+    tail --lines=+2 ${file} >> 83240848039.csv
     rm ${file}
 done

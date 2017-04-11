@@ -3,11 +3,14 @@ import subprocess
 from pathlib import Path
 
 import click
+import logging
 
 from extract_csv import extract_csv
 from fetch_html_report import fetch_accounts_data
+from import_csv import import_to_ynab
 from transform_csv import transform_csv
 
+logging.basicConfig(level=logging.INFO)
 
 def _transform_csv(ctx, extracted_csv_file, report, transformed_csv_root):
     transformed_csv_file = _get_file_path(transformed_csv_root, report)
@@ -42,19 +45,24 @@ def _create_path_dir(path, extension=None):
 @click.command()
 @click.argument('conf_path', type=click.Path(exists=True))
 @click.argument('root_path')
-@click.option('--fetch_data', default=True, type=bool)
+@click.option('--fetch_data/--no-fetch_data', default=True)
 @click.pass_context
 def run(ctx, conf_path, root_path, fetch_data):
     extracted_csv_root, html_path, transformed_csv_root = _get_paths(root_path)
 
     if fetch_data:
+        logging.info('Fetch data from Leumi')
         ctx.invoke(fetch_accounts_data, conf_path=conf_path, output_path=html_path)
 
+    logging.info('Creating CSVs')
     for report in html_path.glob('*.html'):
         extracted_csv_file = _extract_csv(ctx, extracted_csv_root, report)
         _transform_csv(ctx, extracted_csv_file, report, transformed_csv_root)
 
     subprocess.run(['bash', 'merge_csv.sh', str(transformed_csv_root)])
+
+    logging.info('Importing CSVs to YNAB')
+    ctx.invoke(import_to_ynab, conf_path=conf_path, input_path=transformed_csv_root)
 
 
 if __name__ == "__main__":

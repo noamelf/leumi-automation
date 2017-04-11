@@ -3,6 +3,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 import click
+from datetime import datetime
 
 map_headers = OrderedDict({
     'Date': ['תאריך העסקה', 'תאריך'],
@@ -36,7 +37,14 @@ def _extract_rows_values(new_column_index, rows):
 def _extract_columns(new_column_index, row):
     for index in new_column_index:
         if index is not None:
-            yield row[index]
+            val = row[index]
+
+            # if this is the date, let's reformat it.
+            if index == 0:
+                date = datetime.strptime(val, '%d/%m/%y')
+                val = date.strftime('%d/%b/%Y')
+
+            yield val
         else:
             yield ''
 
